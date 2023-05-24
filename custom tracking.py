@@ -1,11 +1,11 @@
-import cv2
+from cv2 import cv2
 import numpy as np
 from random import randint
 from lib.Box import Box
 
 cv = cv2
 
-cap = cv2.VideoCapture(r"C:\Users\Amy\Documents\python\DealNo Solver\cases shuffling short.mp4")
+cap = cv2.VideoCapture(r"C:\Users\Amy\Documents\python\DealNo Solver\IMG_4383.MOV")
 
 
 def hsv2bgr(h, s, v):
@@ -69,6 +69,30 @@ class Case(Box):
         return False
 
 
+def getBoxes(frame):
+    """Iterate through all pixels. When reaching a white pixel, find bottom and right of containing rect. Repeat until midpoint stops changing"""
+    for y1 in range(frame.shape[0]):
+        for x1 in range(frame.shape[1]):
+            oldBbox = Box()
+            while True:  # Repeat until midpoints stay the same
+                cell = frame[y1, x1]
+                if cell == 0:
+                    break
+                y2 = y1
+                while frame[y2, x1] != 1:
+                    y2 += 1
+                midY = (y1 + y1) >> 1  # Fast average
+                x2 = x1
+                # TODO: can still create skinny rectangles
+                # Initial plan: scanner initially jumps >1, if black, cut vertical distance and check from 1/4 & 3/4 y marks
+                # However, this is variable on case size
+                while frame[midY, x2] != 1:
+                    x2 += 1
+                newBbox =  Box(xyxy=(x1, y1, x2, y2))
+                if newBbox == oldBbox:
+                    yield newBbox
+
+
 cases = []
 while True:
     ret, frame = cap.read()
@@ -76,15 +100,16 @@ while True:
         break
     grey = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     _, binary = cv2.threshold(grey, 100, 255, cv2.THRESH_BINARY)
-    kernel = np.ones((40, 40), np.uint8)
+    # cv2.imshow("bin", binary)  # For reference
+    kernel = np.ones((80, 80), np.uint8)  # also works well at 60x60
     # Ref: https://docs.opencv.org/master/d9/d61/tutorial_py_morphological_ops.html
     erosion = cv.erode(binary, kernel)
 
-    contours, hierarchy = cv.findContours(erosion, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+    contours, _hierarchy = cv.findContours(erosion, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+    boxes = getBoxes(erosion)
     # cv.drawContours(frame, contours, -1, (0, 255, 0), 3)
-    for cnt in contours:
-        x, y, w, h = cv.boundingRect(cnt)
-        box = Box(xywh=(x, y, w, h))
+    for box in boxes:
+        x, y, w, h = box.xywh
         cv.circle(frame, (int(x + w / 2), int(y + h / 2)), 2, (0, 0, 255), -1)
 
         swapWith = None
@@ -106,7 +131,10 @@ while True:
 
     cv2.imshow('contours', frame)
     cv2.imshow('thresh', erosion)
-    key = cv2.waitKey(0)
+    if len(cases) < 16:
+        key = cv2.waitKey(1)
+    else:
+        key = cv2.waitKey(0)
     print()
     if key == ord('q'):
         break

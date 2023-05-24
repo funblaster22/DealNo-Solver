@@ -1,10 +1,12 @@
+# Adapted from https://pyimagesearch.com/2018/07/30/opencv-object-tracking/
+
 # import the necessary packages
 from imutils.video import VideoStream
 from imutils.video import FPS
 import argparse
 import imutils
 import time
-import cv2
+from cv2 import cv2
 
 # construct the argument parser and parse the arguments
 ap = argparse.ArgumentParser()
@@ -26,7 +28,7 @@ else:
 	# initialize a dictionary that maps strings to their corresponding
 	# OpenCV object tracker implementations
 	OPENCV_OBJECT_TRACKERS = {
-		"csrt": cv2.TrackerCSRT_create,
+		"csrt": cv2.TrackerCSRT_create,  # This one works the best, but doesn't work when they swap & overlap
 		"kcf": cv2.TrackerKCF_create,
 		"boosting": cv2.legacy.TrackerBoosting_create,
 		"mil": cv2.TrackerMIL_create,
