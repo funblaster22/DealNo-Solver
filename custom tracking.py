@@ -69,31 +69,30 @@ class Case(Box):
         return False
 
 
-def getBoxes(frame):
+def getBoxes(frame: np.ndarray, prevCentroids: list[Box]):
     """Iterate through all pixels. When reaching a white pixel, find bottom and right of containing rect. Repeat until midpoint stops changing"""
-    for y1 in range(frame.shape[0]):
-        for x1 in range(frame.shape[1]):
-            oldBbox = Box()
-            while True:  # Repeat until midpoints stay the same
-                cell = frame[y1, x1]
-                if cell == 0:
-                    break
-                y2 = y1
-                while frame[y2, x1] != 1:
-                    y2 += 1
-                midY = (y1 + y1) >> 1  # Fast average
-                x2 = x1
-                # TODO: can still create skinny rectangles
-                # Initial plan: scanner initially jumps >1, if black, cut vertical distance and check from 1/4 & 3/4 y marks
-                # However, this is variable on case size
-                while frame[midY, x2] != 1:
-                    x2 += 1
-                newBbox =  Box(xyxy=(x1, y1, x2, y2))
-                if newBbox == oldBbox:
-                    yield newBbox
+    for centroid in prevCentroids:
+        cx, cy = centroid.center
+        x1 = x2 = cx
+        y1 = y2 = cy
+        # cell = frame[cy, cx]
+        # if cell == 0:
+        #     raise LookupError("There is no box where the last centroid was!")
+
+        # TODO: expand in square until hit wall
+        while frame[cy, x2] == 255:  # Expand right
+            x2 += 1
+        while frame[y2, cx] == 255:  # Expand down
+            y2 += 1
+        while frame[cy, x1] == 255:  # Expand left
+            x1 -= 1
+        while frame[y1, cx] == 255:  # Expand up
+            y1 -= 1
+        centroid.set_pos(xyxy=(x1, y1, x2, y2))
+    return prevCentroids
 
 
-cases = []
+cases: list[Case] = []
 while True:
     ret, frame = cap.read()
     if not ret:
@@ -101,26 +100,33 @@ while True:
     grey = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     _, binary = cv2.threshold(grey, 100, 255, cv2.THRESH_BINARY)
     # cv2.imshow("bin", binary)  # For reference
-    kernel = np.ones((80, 80), np.uint8)  # also works well at 60x60
+    kernel = np.ones((60, 60), np.uint8)  # 80x80 does not work b/c prev centroid outside case after moving
     # Ref: https://docs.opencv.org/master/d9/d61/tutorial_py_morphological_ops.html
     erosion = cv.erode(binary, kernel)
 
-    contours, _hierarchy = cv.findContours(erosion, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
-    boxes = getBoxes(erosion)
-    # cv.drawContours(frame, contours, -1, (0, 255, 0), 3)
-    for box in boxes:
-        x, y, w, h = box.xywh
-        cv.circle(frame, (int(x + w / 2), int(y + h / 2)), 2, (0, 0, 255), -1)
+    # TODO: first attempt may not be correcct, so check over several iters
+    if len(cases) < 16:  # First time init
+        contours, _hierarchy = cv.findContours(erosion, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+        for cnt in contours:
+            x, y, w, h = cv.boundingRect(cnt)
+            box = Box(xywh=(x, y, w, h))
+            cv.circle(frame, (int(x + w / 2), int(y + h / 2)), 2, (0, 0, 255), -1)
 
-        swapWith = None
-        for case in cases:  # test each case against new cases to move
-            if case.try_swap(box, swapWith):
-                swapWith = case
-            else:
-                case.try_move(box)
+            swapWith = None
+            for case in cases:  # test each case against new cases to move
+                if case.try_swap(box, swapWith):
+                    swapWith = case
+                else:
+                    case.try_move(box)
 
-        if len(contours) == 16 and len(cases) < 16:  # First time init
-            cases.append(Case((x, y, w, h), randint(1, 99)))
+            if len(contours) == 16:  # First time init
+                cases.append(Case((x, y, w, h), randint(1, 99)))
+    else:
+        # Use prev. centroid position to calculate next
+        for box in getBoxes(erosion, cases):
+            x, y, w, h = box.xywh
+            cv.circle(frame, (int(x + w / 2), int(y + h / 2)), 2, (0, 0, 255), -1)
+            box.show(cv2)
 
     # Display case values
     erosion = cv2.cvtColor(erosion, cv2.COLOR_GRAY2BGR)
