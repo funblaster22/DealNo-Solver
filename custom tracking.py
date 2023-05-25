@@ -1,5 +1,6 @@
 from cv2 import cv2
 import numpy as np
+import math
 from random import randint
 from lib.Box import Box
 
@@ -18,10 +19,9 @@ class Case(Box):
     TOLERANCE_Y = 20
 
     def __init__(self, pos: tuple, value: int = None):
-        super().__init__(xywh=pos)
-        self.recalc_pos(self)
         self.value = value
-        self.momentum = [0, 0]
+        self.momentum = (0, 0)
+        super().__init__(xywh=pos)
 
         # Debug features
         self.color = hsv2bgr(randint(0, 255), 255, 255)
@@ -29,11 +29,10 @@ class Case(Box):
 
     def recalc_pos(self, pos: Box):
         try:  # compute momentum
-            self.momentum[0] = pos.cx - self.cx
-            self.momentum[1] = pos.cy - self.cy
+            self.momentum = (pos.cx - self.cx, pos.cy - self.cy)
         except AttributeError:
             pass
-        self.set_pos(box=pos)
+        self.set_pos()
 
     def try_move(self, newPos: Box):
         dx, dy = newPos - self
@@ -63,33 +62,66 @@ class Case(Box):
                 newPos = Box(box=other)
                 other.recalc_pos(self)
                 self.recalc_pos(newPos)
-                other.momentum = [0, 0]
-                self.momentum = [0, 0]
+                other.momentum = (0, 0)
+                self.momentum = (0, 0)
             return True
         return False
 
+    def set_pos(self, **kwargs):
+        cx1, cy1 = self.center
+        cx2, cy2 = Box(**kwargs).center
+        self.momentum = (
+            ((cx2 - cx1) + self.momentum[0]) / 2,
+            ((cy2 - cy1)  + self.momentum[1]) / 2
+        )
+        super().set_pos(**kwargs)
 
-def getBoxes(frame: np.ndarray, prevCentroids: list[Box]):
-    """Iterate through all pixels. When reaching a white pixel, find bottom and right of containing rect. Repeat until midpoint stops changing"""
-    for centroid in prevCentroids:
-        cx, cy = centroid.center
-        x1 = x2 = cx
-        y1 = y2 = cy
-        # cell = frame[cy, cx]
-        # if cell == 0:
-        #     raise LookupError("There is no box where the last centroid was!")
 
-        # TODO: expand in square until hit wall
-        while frame[cy, x2] == 255:  # Expand right
-            x2 += 1
-        while frame[y2, cx] == 255:  # Expand down
-            y2 += 1
-        while frame[cy, x1] == 255:  # Expand left
-            x1 -= 1
-        while frame[y1, cx] == 255:  # Expand up
-            y1 -= 1
-        centroid.set_pos(xyxy=(x1, y1, x2, y2))
-    return prevCentroids
+def _getBox(frame: np.ndarray, centroid: Box):
+    """"inflate" from center until hit wall (starts as square but can become rectangle)"""
+    cx, cy = centroid.center
+    x1 = x2 = cx
+    y1 = y2 = cy
+    # if frame[cy, cx] == 0:
+    #     raise LookupError("There is no box where the last centroid was!")
+
+    # Stop iterating when all 4 edges cannot expand further
+    while True:
+        x1 -= 1
+        y1 -= 1
+        x2 += 1
+        y2 += 1
+        illegalEdges = 0
+        # Check top edge
+        for x in range(x1, x2):
+            if (frame[y1, x]) == 0:
+                illegalEdges += 1
+                y1 += 1
+        # Check bottom edge
+        for x in range(x1, x2):
+            if (frame[y2, x]) == 0:
+                illegalEdges += 1
+                y2 -= 1
+        # Check left edge
+        for y in range(y1, y2):
+            if (frame[y, x1]) == 0:
+                illegalEdges += 1
+                x1 += 1
+        # Check right edge
+        for y in range(y1, y2):
+            if (frame[y, x2]) == 0:
+                illegalEdges += 1
+                x2 -= 1
+        if illegalEdges == 4:
+            return Box(xyxy=(x1, y1, x2, y2))
+
+def getBoxes(frame: np.ndarray, centroids: list[Case]):
+    """See _getBox. Does that for every centroid, then checks collisions & swaps them"""
+    # TODO: this is slow. Improve by 1: implementing natively (hard) or 2: downscaling img to 40x40?
+    for centroid in centroids:
+        newBox = _getBox(frame, centroid)
+        centroid.set_pos(box=newBox)
+    return centroids
 
 
 cases: list[Case] = []
@@ -104,20 +136,24 @@ while True:
     # Ref: https://docs.opencv.org/master/d9/d61/tutorial_py_morphological_ops.html
     erosion = cv.erode(binary, kernel)
 
-    # TODO: first attempt may not be correcct, so check over several iters
+    # TODO: first attempt may not be correct, so check over several iters
     if len(cases) < 16:  # First time init
         contours, _hierarchy = cv.findContours(erosion, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
         for cnt in contours:
             x, y, w, h = cv.boundingRect(cnt)
+            # Cases are always wider than tall. Disqualify batch if violated
+            if h > w:
+                cases.clear()
+                break
             box = Box(xywh=(x, y, w, h))
             cv.circle(frame, (int(x + w / 2), int(y + h / 2)), 2, (0, 0, 255), -1)
 
-            swapWith = None
-            for case in cases:  # test each case against new cases to move
-                if case.try_swap(box, swapWith):
-                    swapWith = case
-                else:
-                    case.try_move(box)
+            # swapWith = None
+            # for case in cases:  # test each case against new cases to move
+            #     if case.try_swap(box, swapWith):
+            #         swapWith = case
+            #     else:
+            #         case.try_move(box)
 
             if len(contours) == 16:  # First time init
                 cases.append(Case((x, y, w, h), randint(1, 99)))
@@ -131,8 +167,11 @@ while True:
     # Display case values
     erosion = cv2.cvtColor(erosion, cv2.COLOR_GRAY2BGR)
     for case in cases:
-        cv2.putText(frame, str(case.value) + ':' + str(max(abs(case.momentum[0]), abs(case.momentum[1]))),
+        cv2.putText(frame, str(case.value), # + ':' + str(max(abs(case.momentum[0]), abs(case.momentum[1]))),
                     (case.x1, case.y1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, case.color, 2)
+        cx, cy = case.center
+        mx, my = case.momentum
+        cv2.line(frame, (cx, cy), (int(cx + mx), int(cy + my)), case.color, 2)
         cv.rectangle(frame, (case.x1, case.y1), (case.x2, case.y2), case.color, 2)
 
     cv2.imshow('contours', frame)
@@ -140,8 +179,8 @@ while True:
     if len(cases) < 16:
         key = cv2.waitKey(1)
     else:
-        key = cv2.waitKey(0)
-    print()
+        key = cv2.waitKey(1)
+    print(".", end="")
     if key == ord('q'):
         break
 
