@@ -7,6 +7,7 @@ from lib.Box import Box
 cv = cv2
 
 cap = cv2.VideoCapture(r"C:\Users\Amy\Documents\python\DealNo Solver\IMG_4383.MOV")
+cap.set(cv2.CAP_PROP_POS_FRAMES, 900)
 
 
 def hsv2bgr(h, s, v):
@@ -67,6 +68,22 @@ class Case(Box):
             return True
         return False
 
+    def project(self, bin_frame: np.ndarray):
+        """pr-oh-ject: keep moving Box in direction of previous velocity until leaving white region.
+        This works because while swapping, the combined bounding box should decrease"""
+        speed = math.sqrt(self.momentum[0] ** 2 + self.momentum[1] ** 2)
+        # if speed == 0:
+        #     return
+        velocityX = round(self.momentum[0] / speed)
+        velocityY = round(self.momentum[1] / speed)
+        assert velocityX != velocityY
+        cx, cy = self.center
+        while bin_frame[cy, cx] != 0:
+            cx += velocityX
+            cy += velocityY
+        step_size = 10
+        self.center = (cx + velocityX * step_size, cy + velocityY * step_size)
+
     def set_pos(self, **kwargs):
         cx1, cy1 = self.center
         cx2, cy2 = Box(**kwargs).center
@@ -76,9 +93,22 @@ class Case(Box):
         )
         super().set_pos(**kwargs)
 
+    def show(self, module=None, frame=None, color=None):
+        """`module` and `color` are unused"""
+        cv2.putText(frame, str(self.value),  # + ':' + str(max(abs(case.momentum[0]), abs(case.momentum[1]))),
+                    (self.x1, self.y1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color, 2)
+        cx, cy = self.center
+        mx, my = self.momentum
+        cv2.line(frame, (cx, cy), (int(cx + mx), int(cy + my)), self.color, 2)
+        super().show(cv2, frame, self.color)
+        # cv.rectangle(frame, (case.x1, case.y1), (case.x2, case.y2), case.color, 2)
+
 
 def _getBox(frame: np.ndarray, centroid: Box):
     """"inflate" from center until hit wall (starts as square but can become rectangle)"""
+    # Cool related algorithms (not implemented):
+    # Maximize the rectangular area under Histogram: https://stackoverflow.com/a/35931960
+    # Find largest rectangle containing only zeros in an N×N binary matrix: https://stackoverflow.com/a/12387148
     cx, cy = centroid.center
     x1 = x2 = cx
     y1 = y2 = cy
@@ -114,6 +144,34 @@ def _getBox(frame: np.ndarray, centroid: Box):
                 x2 -= 1
         if illegalEdges == 4:
             return Box(xyxy=(x1, y1, x2, y2))
+        # TODO: can be shortened? (doesn't work for some reason)
+        """
+        illegalEdges = 0
+        x1 -= 1
+        x2 += 1
+        for x in range(x1, x2):
+            # Check top edge
+            if (frame[y1, x]) == 0:
+                illegalEdges += 1
+                y1 += 1
+            # Check bottom edge
+            if (frame[y2, x]) == 0:
+                illegalEdges += 1
+                y2 -= 1
+        y1 -= 1
+        y2 += 1
+        for y in range(y1, y2):
+            # Check left edge
+            if (frame[y, x1]) == 0:
+                illegalEdges += 1
+                x1 += 1
+            # Check right edge
+            if (frame[y, x2]) == 0:
+                illegalEdges += 1
+                x2 -= 1
+        if illegalEdges == 4:
+            return Box(xyxy=(x1, y1, x2, y2))
+        """
 
 def getBoxes(frame: np.ndarray, centroids: list[Case]):
     """See _getBox. Does that for every centroid, then checks collisions & swaps them"""
@@ -121,6 +179,11 @@ def getBoxes(frame: np.ndarray, centroids: list[Case]):
     for centroid in centroids:
         newBox = _getBox(frame, centroid)
         centroid.set_pos(box=newBox)
+        # check for overlap & swap
+        for otherCentroid in centroids:
+            if Box.intersection(centroid, otherCentroid) and centroid is not otherCentroid:
+                centroid.project(frame)
+                otherCentroid.project(frame)
     return centroids
 
 
@@ -167,19 +230,18 @@ while True:
     # Display case values
     erosion = cv2.cvtColor(erosion, cv2.COLOR_GRAY2BGR)
     for case in cases:
-        cv2.putText(frame, str(case.value), # + ':' + str(max(abs(case.momentum[0]), abs(case.momentum[1]))),
-                    (case.x1, case.y1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, case.color, 2)
-        cx, cy = case.center
-        mx, my = case.momentum
-        cv2.line(frame, (cx, cy), (int(cx + mx), int(cy + my)), case.color, 2)
-        cv.rectangle(frame, (case.x1, case.y1), (case.x2, case.y2), case.color, 2)
+        case.show(frame=frame)
+        case.show(frame=erosion)
 
     cv2.imshow('contours', frame)
     cv2.imshow('thresh', erosion)
     if len(cases) < 16:
         key = cv2.waitKey(1)
     else:
-        key = cv2.waitKey(1)
+        key = cv2.waitKey(0)
+    # TEMP for my sanity TODO: remove
+    if cap.get(cv2.CAP_PROP_POS_FRAMES) == 930:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, 962)
     print(".", end="")
     if key == ord('q'):
         break
