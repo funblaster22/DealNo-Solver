@@ -143,7 +143,12 @@ def _getBox(frame: np.ndarray, centroid: Box):
                 illegalEdges += 1
                 x2 -= 1
         if illegalEdges == 4:
-            return Box(xyxy=(x1, y1, x2, y2))
+            newBox = Box(xyxy=(x1, y1, x2, y2))
+            # This is the case where boxes have swapped & are waiting to separate & continue tracking. Do not update centroid if it is not legal shape
+            # By some quirk of the algorithm, centroids surrounded by black are 2 by -2
+            if centroid.area <= 0 and (newBox.h > newBox.w or newBox.w > newBox.h * 2):
+                return centroid
+            return newBox
         # TODO: can be shortened? (doesn't work for some reason)
         """
         illegalEdges = 0
