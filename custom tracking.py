@@ -192,11 +192,14 @@ def getBoxes(frame: np.ndarray, centroids: list[Case]):
     return centroids
 
 
-cases: list[Case] = []
-while True:
+def tick() -> bool:
+    """Take a frame and update case state
+    :return: boolean of whether mainloop should continue
+    """
+    global frame
     ret, frame = cap.read()
     if not ret:
-        break
+        return False
     grey = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     _, binary = cv2.threshold(grey, 100, 255, cv2.THRESH_BINARY)
     # cv2.imshow("bin", binary)  # For reference
@@ -249,7 +252,16 @@ while True:
         cap.set(cv2.CAP_PROP_POS_FRAMES, 962)
     print(".", end="")
     if key == ord('q'):
-        break
+        return False
+    return True
 
-cap.release()
-cv2.destroyAllWindows()
+
+cases: list[Case] = []
+frame: np.ndarray = None  # Global scope OK since only used for debugging
+if __name__ == "__main__":
+    while tick():
+        # No-op: tick() has all logic
+        pass
+    cap.release()
+    cv2.destroyAllWindows()
+
