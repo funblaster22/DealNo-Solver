@@ -118,10 +118,7 @@ def _getBox(bin_frame: np.ndarray, centroid: Box):
     cx, cy = centroid.center
     x1 = x2 = cx
     y1 = y2 = cy
-    # if frame[cy, cx] == 0:
-    #     raise LookupError("There is no box where the last centroid was!")
 
-    bin_copy = bin_frame.copy()
     # Stop iterating when all 4 edges cannot expand further
     while True:
         x1 -= 1
@@ -129,35 +126,29 @@ def _getBox(bin_frame: np.ndarray, centroid: Box):
         x2 += 1
         y2 += 1
         (Box(xyxy=(x1, y1, x2, y2)) / CONVERSION_720P).show(cv2, frame=frame, color=(0, 0, 255))
-        Box(xyxy=(x1, y1, x2, y2)).show(cv2, frame=bin_copy, color=(0, 0, 0))
-        cv2.imshow("eee", frame)
-        cv2.imshow("eee2", bin_copy)
-        cv2.waitKey(30)
         illegalEdges = 0
-        # if (y1 > y2 or x1 > x2 or x1 < 0 or y1 < 0):
-        #     illegalEdges = 4
-        #     x1 = 0
-        #     y1 = 0
+        # Adding 1 to range upper bound Solves issue where boxes centered in black infinitely stretch
+        # First two checks (top & bottom) fail, reducing vertical search to [], which never realizes the other 2 edges are illegal
         # Check top edge
-        for x in range(x1, x2):
+        for x in range(x1, x2 + 1):
             if bin_frame[y1, x] == 0:
                 illegalEdges += 1
                 y1 += 1
                 break
         # Check bottom edge
-        for x in range(x1, x2):
+        for x in range(x1, x2 + 1):
             if bin_frame[y2, x] == 0:
                 illegalEdges += 1
                 y2 -= 1
                 break
         # Check left edge
-        for y in range(y1, y2):
+        for y in range(y1, y2 + 1):
             if bin_frame[y, x1] == 0:
                 illegalEdges += 1
                 x1 += 1
                 break
         # Check right edge
-        for y in range(y1, y2):
+        for y in range(y1, y2 + 1):
             if bin_frame[y, x2] == 0:
                 illegalEdges += 1
                 x2 -= 1
