@@ -3,8 +3,12 @@ import numpy as np
 import math
 from random import randint
 from lib.Box import Box
-
 cv = cv2
+
+# Resize binary, threshold img height to this amount, maintain 16:9 ratio
+SCALE_HEIGHT = 144  # 96x54 or 256x144 both seems reasonable
+# Multiply by this factor to convert 720p scale to the current scale. Divide to undo
+CONVERSION_720P = SCALE_HEIGHT / 720
 
 cap = cv2.VideoCapture(r"C:\Users\Amy\Documents\python\DealNo Solver\IMG_4383.MOV")
 cap.set(cv2.CAP_PROP_POS_FRAMES, 900)
@@ -16,16 +20,18 @@ def hsv2bgr(h, s, v):
 
 
 class Case(Box):
-    TOLERANCE_X = 30
-    TOLERANCE_Y = 20
+    TOLERANCE_X = int(30 * CONVERSION_720P)
+    TOLERANCE_Y = int(20 * CONVERSION_720P)
 
-    def __init__(self, pos: tuple, value: int = None):
+    def __init__(self, xywh: tuple, value: int = None, momentum: tuple[float, float] = None, color: tuple[int, int, int] = None):
         self.value = value
         self.momentum = (0, 0)
-        super().__init__(xywh=pos)
+        super().__init__(xywh=xywh)
+        # Must be re-set after super init b/c constructor calls set_pos, which is overridden by Case and updates momentum
+        self.momentum = momentum or (0, 0)
 
         # Debug features
-        self.color = hsv2bgr(randint(0, 255), 255, 255)
+        self.color = color or hsv2bgr(randint(0, 255), 255, 255)
         print(self.w * self.h, self.color)
 
     def recalc_pos(self, pos: Box):
@@ -56,7 +62,7 @@ class Case(Box):
     def try_swap(self, bound: Box, other: "Case") -> bool:
         big_self = Box(ccwh=(self.cx, self.cy, self.w + self.TOLERANCE_X * 2, self.h + self.TOLERANCE_Y * 2))
         big_self.show(cv, frame)
-        if big_self.chk_collision(bound) and (bound.h > 25 or bound.w > 55):
+        if big_self.chk_collision(bound) and (bound.h > 25 * CONVERSION_720P or bound.w > 55 * CONVERSION_720P):
             print("COLLISION", big_self, bound, other)
             if other is not None:
                 print("SWAP", self.value, other.value)
@@ -81,7 +87,7 @@ class Case(Box):
         while bin_frame[cy, cx] != 0:
             cx += velocityX
             cy += velocityY
-        step_size = 10
+        step_size = int(10 * CONVERSION_720P)
         self.center = (cx + velocityX * step_size, cy + velocityY * step_size)
 
     def set_pos(self, **kwargs):
@@ -96,7 +102,7 @@ class Case(Box):
     def show(self, module=None, frame=None, color=None):
         """`module` and `color` are unused"""
         cv2.putText(frame, str(self.value),  # + ':' + str(max(abs(case.momentum[0]), abs(case.momentum[1]))),
-                    (self.x1, self.y1), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color, 2)
+                    (self.x1, self.y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.color, 2)
         cx, cy = self.center
         mx, my = self.momentum
         cv2.line(frame, (cx, cy), (int(cx + mx), int(cy + my)), self.color, 2)
@@ -104,7 +110,7 @@ class Case(Box):
         # cv.rectangle(frame, (case.x1, case.y1), (case.x2, case.y2), case.color, 2)
 
 
-def _getBox(frame: np.ndarray, centroid: Box):
+def _getBox(bin_frame: np.ndarray, centroid: Box):
     """"inflate" from center until hit wall (starts as square but can become rectangle)"""
     # Cool related algorithms (not implemented):
     # Maximize the rectangular area under Histogram: https://stackoverflow.com/a/35931960
@@ -115,33 +121,47 @@ def _getBox(frame: np.ndarray, centroid: Box):
     # if frame[cy, cx] == 0:
     #     raise LookupError("There is no box where the last centroid was!")
 
+    bin_copy = bin_frame.copy()
     # Stop iterating when all 4 edges cannot expand further
     while True:
         x1 -= 1
         y1 -= 1
         x2 += 1
         y2 += 1
+        (Box(xyxy=(x1, y1, x2, y2)) / CONVERSION_720P).show(cv2, frame=frame, color=(0, 0, 255))
+        Box(xyxy=(x1, y1, x2, y2)).show(cv2, frame=bin_copy, color=(0, 0, 0))
+        cv2.imshow("eee", frame)
+        cv2.imshow("eee2", bin_copy)
+        cv2.waitKey(30)
         illegalEdges = 0
+        # if (y1 > y2 or x1 > x2 or x1 < 0 or y1 < 0):
+        #     illegalEdges = 4
+        #     x1 = 0
+        #     y1 = 0
         # Check top edge
         for x in range(x1, x2):
-            if (frame[y1, x]) == 0:
+            if bin_frame[y1, x] == 0:
                 illegalEdges += 1
                 y1 += 1
+                break
         # Check bottom edge
         for x in range(x1, x2):
-            if (frame[y2, x]) == 0:
+            if bin_frame[y2, x] == 0:
                 illegalEdges += 1
                 y2 -= 1
+                break
         # Check left edge
         for y in range(y1, y2):
-            if (frame[y, x1]) == 0:
+            if bin_frame[y, x1] == 0:
                 illegalEdges += 1
                 x1 += 1
+                break
         # Check right edge
         for y in range(y1, y2):
-            if (frame[y, x2]) == 0:
+            if bin_frame[y, x2] == 0:
                 illegalEdges += 1
                 x2 -= 1
+                break
         if illegalEdges == 4:
             newBox = Box(xyxy=(x1, y1, x2, y2))
             # This is the case where boxes have swapped & are waiting to separate & continue tracking. Do not update centroid if it is not legal shape
@@ -149,34 +169,6 @@ def _getBox(frame: np.ndarray, centroid: Box):
             if centroid.area <= 0 and (newBox.h > newBox.w or newBox.w > newBox.h * 2):
                 return centroid
             return newBox
-        # TODO: can be shortened? (doesn't work for some reason)
-        """
-        illegalEdges = 0
-        x1 -= 1
-        x2 += 1
-        for x in range(x1, x2):
-            # Check top edge
-            if (frame[y1, x]) == 0:
-                illegalEdges += 1
-                y1 += 1
-            # Check bottom edge
-            if (frame[y2, x]) == 0:
-                illegalEdges += 1
-                y2 -= 1
-        y1 -= 1
-        y2 += 1
-        for y in range(y1, y2):
-            # Check left edge
-            if (frame[y, x1]) == 0:
-                illegalEdges += 1
-                x1 += 1
-            # Check right edge
-            if (frame[y, x2]) == 0:
-                illegalEdges += 1
-                x2 -= 1
-        if illegalEdges == 4:
-            return Box(xyxy=(x1, y1, x2, y2))
-        """
 
 def getBoxes(frame: np.ndarray, centroids: list[Case]):
     """See _getBox. Does that for every centroid, then checks collisions & swaps them"""
@@ -203,9 +195,14 @@ def tick() -> bool:
     grey = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     _, binary = cv2.threshold(grey, 100, 255, cv2.THRESH_BINARY)
     # cv2.imshow("bin", binary)  # For reference
-    kernel = np.ones((60, 60), np.uint8)  # 80x80 does not work b/c prev centroid outside case after moving
+    kernel_size_720p = 60  # 80x80 does not work b/c prev centroid outside case after moving
+    kernel_size = int(kernel_size_720p * (frame.shape[0] / 720))  # convert kernel size for 720p to current resolution
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
     # Ref: https://docs.opencv.org/master/d9/d61/tutorial_py_morphological_ops.html
     erosion = cv.erode(binary, kernel)
+
+    # Scale to remove unnecessary info (assumes 9:16 ratio)
+    erosion = cv2.resize(erosion, (int(SCALE_HEIGHT * (16/9)), SCALE_HEIGHT))
 
     # TODO: first attempt may not be correct, so check over several iters
     if len(cases) < 16:  # First time init
@@ -230,16 +227,15 @@ def tick() -> bool:
                 cases.append(Case((x, y, w, h), randint(1, 99)))
     else:
         # Use prev. centroid position to calculate next
-        for box in getBoxes(erosion, cases):
-            x, y, w, h = box.xywh
-            cv.circle(frame, (int(x + w / 2), int(y + h / 2)), 2, (0, 0, 255), -1)
-            box.show(cv2)
+        getBoxes(erosion, cases)
 
+    cv2.imshow('smol', erosion)
     # Display case values
     erosion = cv2.cvtColor(erosion, cv2.COLOR_GRAY2BGR)
+    # Scale back up for ease of debugging
+    erosion = cv2.resize(erosion, (1280, 720), interpolation=cv.INTER_NEAREST)
     for case in cases:
-        case.show(frame=frame)
-        case.show(frame=erosion)
+        Case((case / CONVERSION_720P).xywh, case.value, (case.momentum[0] / CONVERSION_720P, case.momentum[1] / CONVERSION_720P), case.color).show(frame=erosion)
 
     cv2.imshow('contours', frame)
     cv2.imshow('thresh', erosion)
