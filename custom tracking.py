@@ -161,7 +161,7 @@ def _getBox(bin_frame: np.ndarray, centroid: Box):
                 return centroid
             return newBox
 
-def getBoxes(frame: np.ndarray, centroids: list[Case]):
+def move_swap_boxes(frame: np.ndarray, centroids: list[Case]):
     """See _getBox. Does that for every centroid, then checks collisions & swaps them"""
     # TODO: this is slow. Improve by 1: implementing natively (hard) or 2: downscaling img to 40x40?
     for centroid in centroids:
@@ -215,10 +215,43 @@ def tick() -> bool:
             #         case.try_move(box)
 
             if len(contours) == 16:  # First time init
-                cases.append(Case((x, y, w, h), randint(1, 99)))
+                case = Case((x, y, w, h), randint(1, 99))
+                cases.append(case)
+                case.set_pos(box=_getBox(erosion, case))
+        if len(contours) == 16:  # First time init
+            avg_width = round(sum(map(lambda c: c.w, cases)) / 16)
+            avg_height = round(sum(map(lambda c: c.h, cases)) / 16)
+            for case in cases:
+                case.size = (avg_width, avg_height)
+                case.momentum = (0, 0)
     else:
-        # Use prev. centroid position to calculate next
-        getBoxes(erosion, cases)
+        UP = np.array((-1, 0))
+        DOWN = np.array((1, 0))
+        LEFT = np.array((0, -1))
+        RIGHT = np.array((0, 1))
+        DIRECTIONS = (UP, DOWN, LEFT, RIGHT)
+        for case in cases:
+            best_direction = (0, 0)
+            best_coverage = 0
+            for direction in DIRECTIONS:
+                case.moveBy(*direction)
+                new_sum = erosion[case.slicer].sum()
+                if new_sum > best_coverage:
+                    best_coverage = new_sum
+                    best_direction = direction
+                case.moveBy(*(direction * -1))
+
+            if best_coverage == 0:
+                return True
+
+            best_coverage = 0
+            while True:
+                coverage = erosion[case.slicer].sum()
+                case.moveBy(*best_direction)
+                if coverage <= best_coverage:
+                    case.moveBy(*(best_direction * -2))  # TODO: no clue why * -2, was expecting -1
+                    break
+                best_coverage = coverage
 
     cv2.imshow('smol', erosion)
     # Display case values
