@@ -2,9 +2,6 @@ from cv2 import cv2
 import numpy as np
 import math
 from random import randint
-
-from tensorflow.python.data.experimental.ops import cardinality
-
 from lib.Box import Box
 cv = cv2
 
@@ -222,6 +219,7 @@ def tick() -> bool:
                 cases.append(case)
                 case.set_pos(box=_getBox(erosion, case))
         if len(contours) == 16:  # First time init
+            # Tried scaling boxes by * .5 and .75, but no improvement (worse even)
             avg_width = round(sum(map(lambda c: c.w, cases)) / 16)
             avg_height = round(sum(map(lambda c: c.h, cases)) / 16)
             for case in cases:
@@ -236,6 +234,7 @@ def tick() -> bool:
         RIGHT = np.array((0, 1))
         DIRECTIONS = (HERE, UP, DOWN, LEFT, RIGHT)
         for case in cases:
+            original_position = np.array(case.center)
             best_direction = HERE
             best_coverage = 0
             for direction in DIRECTIONS:
@@ -246,27 +245,18 @@ def tick() -> bool:
                     best_direction = direction
                 case.moveBy(*(direction * -1))
 
-            if best_direction is HERE:
-                cardinal_momentum = (
-                    np.sign(case.momentum[0]) if abs(case.momentum[0]) > abs(case.momentum[1]) else 0,
-                    np.sign(case.momentum[1]) if abs(case.momentum[1]) > abs(case.momentum[0]) else 0
-                )
-                case.moveBy(*cardinal_momentum)
-                # case.moveBy(*case.momentum)
+            case.moveBy(*case.momentum)
 
             best_coverage = 0
-            stepcount = 0
             while True:
-                stepcount += 1
                 coverage = erosion[case.slicer].sum()
                 case.moveBy(*best_direction)
                 if coverage <= best_coverage:
                     case.moveBy(*(best_direction * -2))  # TODO: no clue why * -2, was expecting -1
-                    # Ensure the case can only move in 1 cardinal direction
-                    case.momentum = (best_direction * stepcount + case.momentum) / 2
-                    # case.momentum = abs(best_direction) * case.momentum + best_direction
                     break
                 best_coverage = coverage
+
+            case.momentum = (case.center - original_position + case.momentum) / 2
 
     cv2.imshow('smol', erosion)
     # Display case values
