@@ -2,6 +2,9 @@ from cv2 import cv2
 import numpy as np
 import math
 from random import randint
+
+from tensorflow.python.data.experimental.ops import cardinality
+
 from lib.Box import Box
 cv = cv2
 
@@ -225,13 +228,15 @@ def tick() -> bool:
                 case.size = (avg_width, avg_height)
                 case.momentum = (0, 0)
     else:
+        # Coordinates are used as (x, y), but defined as (y, x). I think it is consistent & no issues
+        HERE = np.array((0, 0))
         UP = np.array((-1, 0))
         DOWN = np.array((1, 0))
         LEFT = np.array((0, -1))
         RIGHT = np.array((0, 1))
-        DIRECTIONS = (UP, DOWN, LEFT, RIGHT)
+        DIRECTIONS = (HERE, UP, DOWN, LEFT, RIGHT)
         for case in cases:
-            best_direction = (0, 0)
+            best_direction = HERE
             best_coverage = 0
             for direction in DIRECTIONS:
                 case.moveBy(*direction)
@@ -241,15 +246,25 @@ def tick() -> bool:
                     best_direction = direction
                 case.moveBy(*(direction * -1))
 
-            if best_coverage == 0:
-                return True
+            if best_direction is HERE:
+                cardinal_momentum = (
+                    np.sign(case.momentum[0]) if abs(case.momentum[0]) > abs(case.momentum[1]) else 0,
+                    np.sign(case.momentum[1]) if abs(case.momentum[1]) > abs(case.momentum[0]) else 0
+                )
+                case.moveBy(*cardinal_momentum)
+                # case.moveBy(*case.momentum)
 
             best_coverage = 0
+            stepcount = 0
             while True:
+                stepcount += 1
                 coverage = erosion[case.slicer].sum()
                 case.moveBy(*best_direction)
                 if coverage <= best_coverage:
                     case.moveBy(*(best_direction * -2))  # TODO: no clue why * -2, was expecting -1
+                    # Ensure the case can only move in 1 cardinal direction
+                    case.momentum = (best_direction * stepcount + case.momentum) / 2
+                    # case.momentum = abs(best_direction) * case.momentum + best_direction
                     break
                 best_coverage = coverage
 
