@@ -207,13 +207,6 @@ def tick() -> bool:
             box = Box(xywh=(x, y, w, h))
             cv.circle(frame, (int(x + w / 2), int(y + h / 2)), 2, (0, 0, 255), -1)
 
-            # swapWith = None
-            # for case in cases:  # test each case against new cases to move
-            #     if case.try_swap(box, swapWith):
-            #         swapWith = case
-            #     else:
-            #         case.try_move(box)
-
             if len(contours) == 16:  # First time init
                 case = Case((x, y, w, h), randint(1, 99))
                 cases.append(case)
@@ -235,17 +228,23 @@ def tick() -> bool:
         DIRECTIONS = (HERE, UP, DOWN, LEFT, RIGHT)
         for case in cases:
             original_position = np.array(case.center)
+            original_coverage = erosion[case.slicer].sum()
             best_direction = HERE
             best_coverage = 0
-            for direction in DIRECTIONS:
-                case.moveBy(*direction)
-                new_sum = erosion[case.slicer].sum()
-                if new_sum > best_coverage:
-                    best_coverage = new_sum
-                    best_direction = direction
-                case.moveBy(*(direction * -1))
+            for check_distance in range(1, 100):
+                for direction in DIRECTIONS:
+                    case.moveBy(*(direction * check_distance))
+                    new_sum = erosion[case.slicer].sum()
+                    if new_sum > best_coverage:
+                        best_coverage = new_sum
+                        best_direction = direction
+                    case.moveBy(*(direction * check_distance * -1))
+                if best_coverage > original_coverage or original_coverage > 0:
+                    case.moveBy(*(best_direction * check_distance))
+                    break
 
-            case.moveBy(*case.momentum)
+            if best_direction is HERE:
+                case.moveBy(*case.momentum)
 
             best_coverage = 0
             while True:
@@ -256,7 +255,7 @@ def tick() -> bool:
                     break
                 best_coverage = coverage
 
-            case.momentum = (case.center - original_position + case.momentum) / 2
+            case.momentum = (case.center - original_position + case.momentum) / 2 if original_coverage != 0 else HERE
 
     cv2.imshow('smol', erosion)
     # Display case values
