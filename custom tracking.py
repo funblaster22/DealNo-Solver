@@ -193,13 +193,18 @@ def tick() -> bool:
     erosion = cv.erode(binary, kernel)
 
     # Scale to remove unnecessary info (assumes 9:16 ratio)
-    erosion = cv2.resize(erosion, (SCALE_HEIGHT, SCALE_HEIGHT))
+    erosion = cv2.resize(erosion, (int(SCALE_HEIGHT * (16/9)), SCALE_HEIGHT))
 
     # TODO: first attempt may not be correct, so check over several iters
     if len(cases) < 16:  # First time init
         contours, _hierarchy = cv.findContours(erosion, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
         for cnt in contours:
             x, y, w, h = cv.boundingRect(cnt)
+            # Cases are always wider than tall. Disqualify batch if violated
+            if h > w:
+                cases.clear()
+                break
+            box = Box(xywh=(x, y, w, h))
             cv.circle(frame, (int(x + w / 2), int(y + h / 2)), 2, (0, 0, 255), -1)
 
             # swapWith = None
@@ -257,7 +262,7 @@ def tick() -> bool:
     # Display case values
     erosion = cv2.cvtColor(erosion, cv2.COLOR_GRAY2BGR)
     # Scale back up for ease of debugging
-    erosion = cv2.resize(erosion, (720, 720), interpolation=cv.INTER_NEAREST)
+    erosion = cv2.resize(erosion, (1280, 720), interpolation=cv.INTER_NEAREST)
     for case in cases:
         Case((case / CONVERSION_720P).xywh, case.value, (case.momentum[0] / CONVERSION_720P, case.momentum[1] / CONVERSION_720P), case.color).show(frame=erosion)
 
