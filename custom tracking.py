@@ -26,6 +26,8 @@ class Case(Box):
     def __init__(self, xywh: tuple, value: int = None, momentum: tuple[float, float] = None, color: tuple[int, int, int] = None):
         self.value = value
         self.momentum = (0, 0)
+        # How many frames to abstain from moving (set after swapping)
+        self.cooldown = 0
         super().__init__(xywh=xywh)
         # Must be re-set after super init b/c constructor calls set_pos, which is overridden by Case and updates momentum
         self.momentum = momentum or (0, 0)
@@ -77,18 +79,17 @@ class Case(Box):
     def project(self, bin_frame: np.ndarray):
         """pr-oh-ject: keep moving Box in direction of previous velocity until leaving white region.
         This works because while swapping, the combined bounding box should decrease"""
-        speed = math.sqrt(self.momentum[0] ** 2 + self.momentum[1] ** 2)
-        # if speed == 0:
-        #     return
-        velocityX = round(self.momentum[0] / speed)
-        velocityY = round(self.momentum[1] / speed)
+        assert not (self.momentum[0] == 0 and self.momentum[1] == 0)
+        velocityX = np.sign(self.momentum[0]) if abs(self.momentum[0]) > abs(self.momentum[1]) else 0
+        velocityY = np.sign(self.momentum[1]) if abs(self.momentum[1]) > abs(self.momentum[0]) else 0
         assert velocityX != velocityY
         cx, cy = self.center
-        while bin_frame[cy, cx] != 0:
+        while bin_frame[self.slicer].sum() > 0:
+            self.moveBy(velocityX, velocityY)
             cx += velocityX
             cy += velocityY
-        step_size = int(10 * CONVERSION_720P)
-        self.center = (cx + velocityX * step_size, cy + velocityY * step_size)
+        self.center = (cx + velocityX * 3, cy + velocityY * 3)
+        self.cooldown = 25
 
     def set_pos(self, **kwargs):
         cx1, cy1 = self.center
@@ -227,23 +228,22 @@ def tick() -> bool:
         RIGHT = np.array((0, 1))
         DIRECTIONS = (HERE, UP, DOWN, LEFT, RIGHT)
         for case in cases:
+            if case.cooldown > 0:
+                case.cooldown -= 1
+                continue
             original_position = np.array(case.center)
             original_coverage = erosion[case.slicer].sum()
             best_direction = HERE
             best_coverage = 0
-            for check_distance in range(1, 100):
-                for direction in DIRECTIONS:
-                    case.moveBy(*(direction * check_distance))
-                    new_sum = erosion[case.slicer].sum()
-                    if new_sum > best_coverage:
-                        best_coverage = new_sum
-                        best_direction = direction
-                    case.moveBy(*(direction * check_distance * -1))
-                if best_coverage > original_coverage or original_coverage > 0:
-                    case.moveBy(*(best_direction * check_distance))
-                    break
+            for direction in DIRECTIONS:
+                case.moveBy(*direction)
+                new_sum = erosion[case.slicer].sum()
+                if new_sum > best_coverage:
+                    best_coverage = new_sum
+                    best_direction = direction
+                case.moveBy(*(direction * -1))
 
-            if best_direction is HERE:
+            if best_direction is HERE and best_coverage > 0:
                 case.moveBy(*case.momentum)
 
             best_coverage = 0
@@ -254,6 +254,12 @@ def tick() -> bool:
                     case.moveBy(*(best_direction * -2))  # TODO: no clue why * -2, was expecting -1
                     break
                 best_coverage = coverage
+
+            for collision in cases:
+                if case != collision and Box.intersection(case, collision):
+                    case.project(erosion)
+                    collision.project(erosion)
+                    break
 
             case.momentum = (case.center - original_position + case.momentum) / 2 if original_coverage != 0 else HERE
 
