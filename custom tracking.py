@@ -29,7 +29,6 @@ class Case(Box):
         # How many frames to abstain from moving (set after swapping)
         self.cooldown = 0
         super().__init__(xywh=xywh)
-        self.last_safe_spot = self.center
         # Must be re-set after super init b/c constructor calls set_pos, which is overridden by Case and updates momentum
         self.momentum = momentum or (0, 0)
 
@@ -258,15 +257,11 @@ def tick() -> bool:
 
             for collision in cases:
                 if case != collision and Box.intersection(case, collision):
-                    case.center = collision.last_safe_spot
-                    collision.center = case.last_safe_spot
-                    case.cooldown = 25
-                    collision.cooldown = 25
+                    case.project(erosion)
+                    collision.project(erosion)
                     break
 
             case.momentum = (case.center - original_position + case.momentum) / 2 if original_coverage != 0 else HERE
-            if round(case.momentum[0]) == 0 and round(case.momentum[1]) == 0:
-                case.last_safe_spot = case.center
 
     cv2.imshow('smol', erosion)
     # Display case values
