@@ -1,6 +1,6 @@
 from cv2 import cv2
 import numpy as np
-import math
+from collections import deque
 from random import randint
 from lib.Box import Box
 cv = cv2
@@ -26,6 +26,7 @@ class Case(Box):
     def __init__(self, xywh: tuple, value: int = None, momentum: tuple[float, float] = None, color: tuple[int, int, int] = None):
         self.value = value
         self.momentum = (0, 0)
+        self.momentum_history = deque(maxlen=3)
         # How many frames to abstain from moving (set after swapping)
         self.cooldown = 0
         super().__init__(xywh=xywh)
@@ -80,8 +81,7 @@ class Case(Box):
         """pr-oh-ject: keep moving Box in direction of previous velocity until leaving white region.
         This works because while swapping, the combined bounding box should decrease"""
         assert not (self.momentum[0] == 0 and self.momentum[1] == 0)
-        velocityX = np.sign(self.momentum[0]) if abs(self.momentum[0]) > abs(self.momentum[1]) else 0
-        velocityY = np.sign(self.momentum[1]) if abs(self.momentum[1]) > abs(self.momentum[0]) else 0
+        velocityX, velocityY = cardinal_unit_vector(self.momentum)
         assert velocityX != velocityY
         cx, cy = self.center
         while bin_frame[self.slicer].sum() > 0:
@@ -90,6 +90,7 @@ class Case(Box):
             cy += velocityY
         self.center = (cx + velocityX * 3, cy + velocityY * 3)
         self.cooldown = 25
+        self.momentum_history.clear()
 
     def set_pos(self, **kwargs):
         cx1, cy1 = self.center
@@ -109,6 +110,11 @@ class Case(Box):
         cv2.line(frame, (cx, cy), (int(cx + mx), int(cy + my)), self.color, 2)
         super().show(cv2, frame, self.color)
         # cv.rectangle(frame, (case.x1, case.y1), (case.x2, case.y2), case.color, 2)
+
+
+def cardinal_unit_vector(vector):
+    return (np.sign(vector[0]) if abs(vector[0]) > abs(vector[1]) else 0,
+            np.sign(vector[1]) if abs(vector[1]) > abs(vector[0]) else 0)
 
 
 def _getBox(bin_frame: np.ndarray, centroid: Box):
@@ -255,13 +261,11 @@ def tick() -> bool:
                     break
                 best_coverage = coverage
 
-            for collision in cases:
-                if case != collision and Box.intersection(case, collision):
-                    case.project(erosion)
-                    collision.project(erosion)
-                    break
-
             case.momentum = (case.center - original_position + case.momentum) / 2 if original_coverage != 0 else HERE
+            case.momentum_history.append(cardinal_unit_vector(case.momentum))
+
+            if case.momentum_history[0] != (0, 0) and len(case.momentum_history) == 3 and (np.array(case.momentum_history) == case.momentum_history[0]).all():
+                case.project(erosion)
 
     cv2.imshow('smol', erosion)
     # Display case values
