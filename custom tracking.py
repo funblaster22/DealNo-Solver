@@ -22,9 +22,6 @@ def hsv2bgr(h, s, v):
 
 
 class Case(Box):
-    TOLERANCE_X = int(30 * CONVERSION_720P)
-    TOLERANCE_Y = int(20 * CONVERSION_720P)
-
     def __init__(self, xywh: tuple, value: int = None, momentum: tuple[float, float] = None, color: tuple[int, int, int] = None):
         self.value = value
         self.momentum = (0, 0)
@@ -37,46 +34,6 @@ class Case(Box):
 
         # Debug features
         self.color = color or hsv2bgr(randint(0, 255), 255, 255)
-
-    def recalc_pos(self, pos: Box):
-        try:  # compute momentum
-            self.momentum = (pos.cx - self.cx, pos.cy - self.cy)
-        except AttributeError:
-            pass
-        self.set_pos()
-
-    def try_move(self, newPos: Box):
-        dx, dy = newPos - self
-
-        '''left = self.momentum[0] if self.momentum[0] < 0 else 0
-        right = self.momentum[0] if self.momentum[0] > 0 else 0
-        down = self.momentum[1] if self.momentum[1] < 0 else 0
-        up = self.momentum[1] if self.momentum[1] > 0 else 0'''
-        left = right = up = down = 0
-        if left - self.TOLERANCE_X + right / 2 < dx < self.TOLERANCE_X + right + left / 2 and down - self.TOLERANCE_Y + up / 2 < dy < self.TOLERANCE_Y + up + down / 2:  # and w * h < 150
-            self.recalc_pos(newPos)
-            cv.rectangle(frame, (
-            int(self.cx + left - self.TOLERANCE_X + right / 2), int(self.cy + down - self.TOLERANCE_Y + up / 2)),
-                         (int(self.cx + self.TOLERANCE_X + right + left / 2),
-                          int(self.cy + self.TOLERANCE_Y + up + down / 2)), self.color, 2)
-        '''else:
-            self.momentum[0] *= 1.1
-            self.momentum[1] *= 1.1'''
-
-    def try_swap(self, bound: Box, other: "Case") -> bool:
-        big_self = Box(ccwh=(self.cx, self.cy, self.w + self.TOLERANCE_X * 2, self.h + self.TOLERANCE_Y * 2))
-        big_self.show(cv, frame)
-        if big_self.chk_collision(bound) and (bound.h > 25 * CONVERSION_720P or bound.w > 55 * CONVERSION_720P):
-            print("COLLISION", big_self, bound, other)
-            if other is not None:
-                print("SWAP", self.value, other.value)
-                newPos = Box(box=other)
-                other.recalc_pos(self)
-                self.recalc_pos(newPos)
-                other.momentum = (0, 0)
-                self.momentum = (0, 0)
-            return True
-        return False
 
     def project(self, bin_frame: np.ndarray):
         """pr-oh-ject: keep moving Box in direction of previous velocity until leaving white region.
@@ -169,19 +126,6 @@ def _getBox(bin_frame: np.ndarray, centroid: Box):
                 return centroid
             return newBox
 
-def move_swap_boxes(frame: np.ndarray, centroids: list[Case]):
-    """See _getBox. Does that for every centroid, then checks collisions & swaps them"""
-    # TODO: this is slow. Improve by 1: implementing natively (hard) or 2: downscaling img to 40x40?
-    for centroid in centroids:
-        newBox = _getBox(frame, centroid)
-        centroid.set_pos(box=newBox)
-        # check for overlap & swap
-        for otherCentroid in centroids:
-            if Box.intersection(centroid, otherCentroid) and centroid is not otherCentroid:
-                centroid.project(frame)
-                otherCentroid.project(frame)
-    return centroids
-
 
 def tick(debug: bool) -> bool:
     """Take a frame and update case state
@@ -212,7 +156,6 @@ def tick(debug: bool) -> bool:
             if h > w:
                 cases.clear()
                 break
-            box = Box(xywh=(x, y, w, h))
             cv.circle(frame, (int(x + w / 2), int(y + h / 2)), 2, (0, 0, 255), -1)
 
             if len(contours) == 16:  # First time init
@@ -304,4 +247,3 @@ if __name__ == "__main__":
     print("Finished in", round(time() - start, 2), "seconds")
     cap.release()
     cv2.destroyAllWindows()
-
