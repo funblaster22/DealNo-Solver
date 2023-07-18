@@ -1,4 +1,5 @@
 from cv2 import cv2
+from time import time
 import numpy as np
 from scipy import stats
 from collections import deque
@@ -36,7 +37,6 @@ class Case(Box):
 
         # Debug features
         self.color = color or hsv2bgr(randint(0, 255), 255, 255)
-        print(self.w * self.h, self.color)
 
     def recalc_pos(self, pos: Box):
         try:  # compute momentum
@@ -183,7 +183,7 @@ def move_swap_boxes(frame: np.ndarray, centroids: list[Case]):
     return centroids
 
 
-def tick() -> bool:
+def tick(debug: bool) -> bool:
     """Take a frame and update case state
     :return: boolean of whether mainloop should continue
     """
@@ -273,35 +273,35 @@ def tick() -> bool:
                             collision.project(erosion)
                         break
 
-    cv2.imshow('smol', erosion)
-    # Display case values
-    erosion = cv2.cvtColor(erosion, cv2.COLOR_GRAY2BGR)
-    # Scale back up for ease of debugging
-    erosion = cv2.resize(erosion, (1280, 720), interpolation=cv.INTER_NEAREST)
-    for case in cases:
-        Case((case / CONVERSION_720P).xywh, case.value, (case.momentum[0] / CONVERSION_720P, case.momentum[1] / CONVERSION_720P), case.color).show(frame=erosion)
+    if debug:
+        cv2.imshow('smol', erosion)
+        # Display case values
+        erosion = cv2.cvtColor(erosion, cv2.COLOR_GRAY2BGR)
+        # Scale back up for ease of debugging
+        erosion = cv2.resize(erosion, (1280, 720), interpolation=cv.INTER_NEAREST)
+        for case in cases:
+            Case((case / CONVERSION_720P).xywh, case.value, (case.momentum[0] / CONVERSION_720P, case.momentum[1] / CONVERSION_720P), case.color).show(frame=erosion)
 
-    cv2.imshow('contours', frame)
-    cv2.imshow('thresh', erosion)
-    if len(cases) < 16:
-        key = cv2.waitKey(1)
-    else:
-        key = cv2.waitKey(0)
-    # TEMP for my sanity TODO: remove
-    if cap.get(cv2.CAP_PROP_POS_FRAMES) == 930:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, 962)
-    print(".", end="")
-    if key == ord('q'):
-        return False
+        cv2.imshow('contours', frame)
+        cv2.imshow('thresh', erosion)
+        if len(cases) < 16:
+            key = cv2.waitKey(1)
+        else:
+            key = cv2.waitKey(1)
+        print(".", end="")
+        if key == ord('q'):
+            return False
     return True
 
 
 cases: list[Case] = []
 frame: np.ndarray = None  # Global scope OK since only used for debugging
 if __name__ == "__main__":
-    while tick():
+    start = time()
+    while tick(debug=False):
         # No-op: tick() has all logic
         pass
+    print("Finished in", round(time() - start, 2), "seconds")
     cap.release()
     cv2.destroyAllWindows()
 
