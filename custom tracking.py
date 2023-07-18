@@ -1,4 +1,4 @@
-from cv2 import cv2
+import cv2
 import numpy as np
 from scipy import stats
 from collections import deque
@@ -81,7 +81,7 @@ class Case(Box):
     def project(self, bin_frame: np.ndarray):
         """pr-oh-ject: keep moving Box in direction of previous velocity until leaving white region.
         This works because while swapping, the combined bounding box should decrease"""
-        velocityX, velocityY = stats.mode(self.momentum_history).mode[0].astype(int)
+        velocityX, velocityY = stats.mode(self.momentum_history).mode.astype(int)
         assert not (velocityX == 0 and velocityY == 0)
         # TODO: if velocity is 0, invert the momentum of the opposing case
         assert velocityX != velocityY
