@@ -81,17 +81,15 @@ class Case(Box):
     def project(self, bin_frame: np.ndarray):
         """pr-oh-ject: keep moving Box in direction of previous velocity until leaving white region.
         This works because while swapping, the combined bounding box should decrease"""
-        velocityX, velocityY = stats.mode(self.momentum_history).mode[0]
+        velocityX, velocityY = stats.mode(self.momentum_history).mode[0].astype(int)
         assert not (velocityX == 0 and velocityY == 0)
         # TODO: if velocity is 0, invert the momentum of the opposing case
         assert velocityX != velocityY
         cx, cy = self.center
-        # TODO: should only continue until retreating edge is black (avoids extraneous white patches)
-        while bin_frame[self.slicer].sum() > 0:
-            self.moveBy(velocityX, velocityY)
+        while bin_frame[cy, cx] != 0:
             cx += velocityX
             cy += velocityY
-        self.center = (cx + velocityX * 3, cy + velocityY * 3)
+        self.center = (cx + velocityX * int(self.w / 2 + 3), cy + velocityY * int(self.h / 2 + 3))
         self.cooldown = 25
         self.momentum_history.clear()
 
