@@ -1,5 +1,6 @@
 from cv2 import cv2
 import numpy as np
+from scipy import stats
 from collections import deque
 from random import randint
 from lib.Box import Box
@@ -80,10 +81,12 @@ class Case(Box):
     def project(self, bin_frame: np.ndarray):
         """pr-oh-ject: keep moving Box in direction of previous velocity until leaving white region.
         This works because while swapping, the combined bounding box should decrease"""
-        assert not (self.momentum[0] == 0 and self.momentum[1] == 0)
-        velocityX, velocityY = cardinal_unit_vector(self.momentum)
+        velocityX, velocityY = stats.mode(self.momentum_history).mode[0]
+        assert not (velocityX == 0 and velocityY == 0)
+        # TODO: if velocity is 0, invert the momentum of the opposing case
         assert velocityX != velocityY
         cx, cy = self.center
+        # TODO: should only continue until retreating edge is black (avoids extraneous white patches)
         while bin_frame[self.slicer].sum() > 0:
             self.moveBy(velocityX, velocityY)
             cx += velocityX
@@ -264,8 +267,13 @@ def tick() -> bool:
             case.momentum = (case.center - original_position + case.momentum) / 2 if original_coverage != 0 else HERE
             case.momentum_history.append(cardinal_unit_vector(case.momentum))
 
-            if case.momentum_history[0] != (0, 0) and len(case.momentum_history) == 3 and (np.array(case.momentum_history) == case.momentum_history[0]).all():
-                case.project(erosion)
+            if len(case.momentum_history) == case.momentum_history.maxlen:
+                for collision in cases:
+                    if case != collision and Box.intersection(case, collision):
+                        if stats.mode(case.momentum_history).count.min() > 1 and stats.mode(collision.momentum_history).count.min() > 1:
+                            case.project(erosion)
+                            collision.project(erosion)
+                        break
 
     cv2.imshow('smol', erosion)
     # Display case values
