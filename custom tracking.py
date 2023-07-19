@@ -194,7 +194,7 @@ def tick(debug: bool) -> bool:
                 case.moveBy(*(direction * -1))
 
             if best_direction is HERE and best_coverage > 0:
-                case.moveBy(*case.momentum)
+                case.moveBy(int(case.momentum[0]), int(case.momentum[1]))
 
             best_coverage = 0
             while True:
@@ -241,7 +241,7 @@ cases: list[Case] = []
 frame: np.ndarray = None  # Global scope OK since only used for debugging
 if __name__ == "__main__":
     start = time()
-    while tick(debug=False):
+    while tick(debug=True):
         # No-op: tick() has all logic
         pass
     print("Finished in", round(time() - start, 2), "seconds")
