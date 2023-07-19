@@ -47,7 +47,7 @@ class Case(Box):
             cx += velocityX
             cy += velocityY
         self.center = (cx + velocityX * int(self.w / 2 + 3), cy + velocityY * int(self.h / 2 + 3))
-        self.cooldown = 25
+        self.cooldown = 12
         self.momentum_history.clear()
 
     def set_pos(self, **kwargs):
@@ -135,6 +135,8 @@ def tick(debug: bool) -> bool:
     ret, frame = cap.read()
     if not ret:
         return False
+    if len(cases) == 16 and cap.get(cv2.CAP_PROP_POS_FRAMES) % 2 == 0:
+        return True
     grey = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     _, binary = cv2.threshold(grey, 100, 255, cv2.THRESH_BINARY)
     # cv2.imshow("bin", binary)  # For reference
