@@ -13,9 +13,6 @@ SCALE_HEIGHT = 144  # 96x54 or 256x144 both seems reasonable
 # Multiply by this factor to convert 720p scale to the current scale. Divide to undo
 CONVERSION_720P = SCALE_HEIGHT / 720
 
-cap = cv2.VideoCapture(r"C:\Users\Amy\Documents\python\DealNo Solver\IMG_4383.MOV")
-cap.set(cv2.CAP_PROP_POS_FRAMES, 900)
-
 
 def hsv2bgr(h, s, v):
     # Don't question it
@@ -142,7 +139,9 @@ def preprocess_frame(frame: np.ndarray):
     return cv2.resize(erosion, (int(SCALE_HEIGHT * (16 / 9)), SCALE_HEIGHT))
 
 
-def iter_cap():
+def iter_cap(vid_src: str):
+    cap = cv2.VideoCapture(vid_src)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 900)
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -150,17 +149,18 @@ def iter_cap():
         if cap.get(cv2.CAP_PROP_POS_FRAMES) % 2 == 1:
             continue
         yield frame
+    cap.release()
 
 
-def preprocess():
+def preprocess(vid_src: str):
     """Asynchronously iterate through frames and apply `preprocess_frame`
     :returns: array with applied transformations
     """
     with ThreadPoolExecutor() as executor:  # You can use ProcessPoolExecutor() for multiprocessing
-       frame_tasks = list(map(lambda frame: executor.submit(preprocess_frame, frame), iter_cap()))
+       frame_tasks = list(map(lambda frame: executor.submit(preprocess_frame, frame), iter_cap(vid_src)))
 
     return map(lambda future: future.result(), frame_tasks)
-    # return [future.result() for future in frame_tasks]  # TODO: is this faster?
+    # return [future.result() for future in frame_tasks]  # I think this is *slightly* slower, but need to run more tests
 
 
 def tick(bin_frame: np.ndarray, debug: bool) -> bool:
@@ -257,22 +257,29 @@ def tick(bin_frame: np.ndarray, debug: bool) -> bool:
     return True
 
 
-def main():
+def main(debug: bool):
+    # Reset global vars
+    global cases, debug_frame
+    cases = []
+    debug_frame = None
+
     print("Start!")
     start = time()
-    bin_frames = preprocess()
+    vid_src = r"C:\Users\Amy\Documents\python\DealNo Solver\IMG_4383.MOV"
+    bin_frames = preprocess(vid_src)
     preprocess_end = time()
     print("Preprocessed in:", round(preprocess_end - start, 2), "seconds")
     for frame in bin_frames:
-        if not tick(frame, debug=True):
+        if not tick(frame, debug):
             break
     print("Tracked in:", round(time() - preprocess_end, 2), "seconds")
     print("Total time:", round(time() - start, 2), "seconds")
-    cap.release()
     cv2.destroyAllWindows()
 
 
 cases: list[Case] = []
 debug_frame: np.ndarray = None  # Global scope OK since only used for debugging
 if __name__ == "__main__":
-    main()
+    debug = False
+    main(debug)
+    main(debug)
