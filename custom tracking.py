@@ -4,6 +4,7 @@ import numpy as np
 from scipy import stats
 from collections import deque
 from random import randint
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from lib.Box import Box
 cv = cv2
 
@@ -90,7 +91,7 @@ def _getBox(bin_frame: np.ndarray, centroid: Box):
         y1 -= 1
         x2 += 1
         y2 += 1
-        (Box(xyxy=(x1, y1, x2, y2)) / CONVERSION_720P).show(cv2, frame=frame, color=(0, 0, 255))
+        (Box(xyxy=(x1, y1, x2, y2)) / CONVERSION_720P).show(cv2, frame=debug_frame, color=(0, 0, 255))
         illegalEdges = 0
         # Adding 1 to range upper bound Solves issue where boxes centered in black infinitely stretch
         # First two checks (top & bottom) fail, reducing vertical search to [], which never realizes the other 2 edges are illegal
@@ -127,16 +128,7 @@ def _getBox(bin_frame: np.ndarray, centroid: Box):
             return newBox
 
 
-def tick(debug: bool) -> bool:
-    """Take a frame and update case state
-    :return: boolean of whether mainloop should continue
-    """
-    global frame
-    ret, frame = cap.read()
-    if not ret:
-        return False
-    if len(cases) == 16 and cap.get(cv2.CAP_PROP_POS_FRAMES) % 2 == 0:
-        return True
+def preprocess_frame(frame: np.ndarray):
     grey = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     _, binary = cv2.threshold(grey, 100, 255, cv2.THRESH_BINARY)
     # cv2.imshow("bin", binary)  # For reference
@@ -147,23 +139,54 @@ def tick(debug: bool) -> bool:
     erosion = cv.erode(binary, kernel)
 
     # Scale to remove unnecessary info (assumes 9:16 ratio)
-    erosion = cv2.resize(erosion, (int(SCALE_HEIGHT * (16/9)), SCALE_HEIGHT))
+    return cv2.resize(erosion, (int(SCALE_HEIGHT * (16 / 9)), SCALE_HEIGHT))
+
+
+def iter_cap():
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        if cap.get(cv2.CAP_PROP_POS_FRAMES) % 2 == 1:
+            continue
+        yield frame
+
+
+def preprocess():
+    """Asynchronously iterate through frames and apply `preprocess_frame`
+    :returns: array with applied transformations
+    """
+    with ThreadPoolExecutor() as executor:  # You can use ProcessPoolExecutor() for multiprocessing
+       frame_tasks = list(map(lambda frame: executor.submit(preprocess_frame, frame), iter_cap()))
+
+    return map(lambda future: future.result(), frame_tasks)
+    # return [future.result() for future in frame_tasks]  # TODO: is this faster?
+
+
+def tick(bin_frame: np.ndarray, debug: bool) -> bool:
+    """Take a frame and update case state
+    :return: boolean of whether mainloop should continue
+    """
+    global debug_frame
+    debug_frame = cv2.cvtColor(bin_frame, cv2.COLOR_GRAY2BGR)
+    # Scale back up for ease of debugging
+    debug_frame = cv2.resize(debug_frame, (1280, 720), interpolation=cv.INTER_NEAREST)
 
     # TODO: first attempt may not be correct, so check over several iters
     if len(cases) < 16:  # First time init
-        contours, _hierarchy = cv.findContours(erosion, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+        contours, _hierarchy = cv.findContours(bin_frame, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
         for cnt in contours:
             x, y, w, h = cv.boundingRect(cnt)
             # Cases are always wider than tall. Disqualify batch if violated
             if h > w:
                 cases.clear()
                 break
-            cv.circle(frame, (int(x + w / 2), int(y + h / 2)), 2, (0, 0, 255), -1)
+            cv.circle(debug_frame, (int(x + w / 2), int(y + h / 2)), 2, (0, 0, 255), -1)
 
             if len(contours) == 16:  # First time init
                 case = Case((x, y, w, h), randint(1, 99))
                 cases.append(case)
-                case.set_pos(box=_getBox(erosion, case))
+                case.set_pos(box=_getBox(bin_frame, case))
         if len(contours) == 16:  # First time init
             # Tried scaling boxes by * .5 and .75, but no improvement (worse even)
             avg_width = round(sum(map(lambda c: c.w, cases)) / 16)
@@ -184,12 +207,12 @@ def tick(debug: bool) -> bool:
                 case.cooldown -= 1
                 continue
             original_position = np.array(case.center)
-            original_coverage = erosion[case.slicer].sum()
+            original_coverage = bin_frame[case.slicer].sum()
             best_direction = HERE
             best_coverage = 0
             for direction in DIRECTIONS:
                 case.moveBy(*direction)
-                new_sum = erosion[case.slicer].sum()
+                new_sum = bin_frame[case.slicer].sum()
                 if new_sum > best_coverage:
                     best_coverage = new_sum
                     best_direction = direction
@@ -200,7 +223,7 @@ def tick(debug: bool) -> bool:
 
             best_coverage = 0
             while True:
-                coverage = erosion[case.slicer].sum()
+                coverage = bin_frame[case.slicer].sum()
                 case.moveBy(*best_direction)
                 if coverage <= best_coverage:
                     case.moveBy(*(best_direction * -2))  # TODO: no clue why * -2, was expecting -1
@@ -214,21 +237,16 @@ def tick(debug: bool) -> bool:
                 for collision in cases:
                     if case != collision and Box.intersection(case, collision):
                         if stats.mode(case.momentum_history).count.min() > 1 and stats.mode(collision.momentum_history).count.min() > 1:
-                            case.project(erosion)
-                            collision.project(erosion)
+                            case.project(bin_frame)
+                            collision.project(bin_frame)
                         break
 
     if debug:
-        cv2.imshow('smol', erosion)
-        # Display case values
-        erosion = cv2.cvtColor(erosion, cv2.COLOR_GRAY2BGR)
-        # Scale back up for ease of debugging
-        erosion = cv2.resize(erosion, (1280, 720), interpolation=cv.INTER_NEAREST)
+        cv2.imshow('bin_frame', bin_frame)
         for case in cases:
-            Case((case / CONVERSION_720P).xywh, case.value, (case.momentum[0] / CONVERSION_720P, case.momentum[1] / CONVERSION_720P), case.color).show(frame=erosion)
+            Case((case / CONVERSION_720P).xywh, case.value, (case.momentum[0] / CONVERSION_720P, case.momentum[1] / CONVERSION_720P), case.color).show(frame=debug_frame)
 
-        cv2.imshow('contours', frame)
-        cv2.imshow('thresh', erosion)
+        cv2.imshow('debug_frame', debug_frame)
         if len(cases) < 16:
             key = cv2.waitKey(1)
         else:
@@ -239,13 +257,22 @@ def tick(debug: bool) -> bool:
     return True
 
 
-cases: list[Case] = []
-frame: np.ndarray = None  # Global scope OK since only used for debugging
-if __name__ == "__main__":
+def main():
+    print("Start!")
     start = time()
-    while tick(debug=True):
-        # No-op: tick() has all logic
-        pass
-    print("Finished in", round(time() - start, 2), "seconds")
+    bin_frames = preprocess()
+    preprocess_end = time()
+    print("Preprocessed in:", round(preprocess_end - start, 2), "seconds")
+    for frame in bin_frames:
+        if not tick(frame, debug=True):
+            break
+    print("Tracked in:", round(time() - preprocess_end, 2), "seconds")
+    print("Total time:", round(time() - start, 2), "seconds")
     cap.release()
     cv2.destroyAllWindows()
+
+
+cases: list[Case] = []
+debug_frame: np.ndarray = None  # Global scope OK since only used for debugging
+if __name__ == "__main__":
+    main()
