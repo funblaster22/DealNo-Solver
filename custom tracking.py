@@ -4,7 +4,7 @@ import numpy as np
 from scipy import stats
 from collections import deque
 from random import randint
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from lib.Box import Box
 cv = cv2
 
@@ -156,11 +156,10 @@ def preprocess(vid_src: str):
     """Asynchronously iterate through frames and apply `preprocess_frame`
     :returns: array with applied transformations
     """
+    # Unfortunately, multiprocessing is slower (Tested multiprocessing.Pool.map & ProcessPoolExecutor w/ different chunksize/process)
+    # return list(map(preprocess_frame, iter_cap(vid_src)))  # Synchronous
     with ThreadPoolExecutor() as executor:  # You can use ProcessPoolExecutor() for multiprocessing
-       frame_tasks = list(map(lambda frame: executor.submit(preprocess_frame, frame), iter_cap(vid_src)))
-
-    return map(lambda future: future.result(), frame_tasks)
-    # return [future.result() for future in frame_tasks]  # I think this is *slightly* slower, but need to run more tests
+        return executor.map(preprocess_frame, iter_cap(vid_src))
 
 
 def tick(bin_frame: np.ndarray, debug: bool) -> bool:
