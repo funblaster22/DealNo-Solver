@@ -18,17 +18,13 @@ const int SCALE_HEIGHT = 144;  // 96x54 or 256x144 both seems reasonable
 // Multiply by this factor to convert 720p scale to the current scale.Divide to undo
 const double CONVERSION_720P = (double)SCALE_HEIGHT / 720;
 
-VideoCapture cap("C:/Users/Amy/Documents/python/DealNo Solver/IMG_4383.MOV");
 vector<Case> cases;
-// Global scope OK since only used for debugging
-Mat debug_frame;
+Mat debug_frame;  // Global scope OK since only used for debugging
 
-bool tick(bool debug) {
-    bool ret = cap.read(debug_frame);
-    if (!ret) return false;
 
+Mat preprocess_frame(Mat frame) {
     Mat bin_frame;
-    cvtColor(debug_frame, bin_frame, COLOR_BGR2GRAY);
+    cvtColor(frame, bin_frame, COLOR_BGR2GRAY);
     threshold(bin_frame, bin_frame, 100, 255, THRESH_BINARY);
     // cv2.imshow("bin", binary)  # For reference
     int kernel_size = 60;  // 80x80 does not work b / c prev centroid outside case after moving
@@ -39,12 +35,37 @@ bool tick(bool debug) {
 
     // Scale to remove unnecessary info(assumes 9:16 ratio)
     resize(bin_frame, bin_frame, Size((int)(SCALE_HEIGHT * (16.0 / 9)), SCALE_HEIGHT));
+    return bin_frame;
+}
 
+
+vector<future<Mat>> preprocess(cv::String vid_src) {
+    BS::thread_pool pool;
+    cout << "Your computer has " << pool.get_thread_count() << " threads" << endl;
+    vector<future<Mat>> frame_tasks;
+    VideoCapture cap(vid_src);
+    cap.set(CAP_PROP_POS_FRAMES, 900);
+    while (true) {
+        Mat frame;
+        bool ret = cap.read(frame);
+        if (!ret) break;
+        if ((int)cap.get(CAP_PROP_POS_FRAMES) % 2 == 1)
+            continue;
+
+        //pool.push_task(preprocess_frame, frame);
+        //frame_tasks.push_back(pool.submit(preprocess_frame, frame));
+    }
+    cap.release();
+    return frame_tasks;
+}
+
+
+bool tick(future<Mat>& bin_frame, bool debug) {
     // TODO
 
     if (debug) {
-        imshow("debug_frame", debug_frame);
-        imshow("bin_frame", bin_frame);
+        // imshow("debug_frame", debug_frame);
+        imshow("bin_frame", bin_frame.get());
         char key;
         if (cases.size() < 16)
             key = waitKey(1);
@@ -58,15 +79,20 @@ bool tick(bool debug) {
 }
 
 int main() {
-    cap.set(CAP_PROP_POS_FRAMES, 900);
+    cases.clear();
+    cout << "Start!" << endl;
     auto start = high_resolution_clock::now();
-    while (tick(false)) {
-        // No-op: tick() has all logic
+    auto vid_src = "C:/Users/Amy/Documents/python/DealNo Solver/IMG_4383.MOV";
+    auto bin_frames = preprocess(vid_src);
+    auto preprocess_end = high_resolution_clock::now();
+    cout << "Preprocessed in " << duration_cast<seconds>(preprocess_end - start).count() << " seconds";
+    for (auto& frame : bin_frames) {
+        if (!tick(frame, true))
+            break;
     }
     auto stop = high_resolution_clock::now();
     cout << endl;
     printf("Finished in %d seconds", (int)duration_cast<seconds>(stop - start).count());
     //cout << "Finished in " << duration_cast<seconds>(stop - start) << " seconds";
-    cap.release();
     destroyAllWindows();
 }

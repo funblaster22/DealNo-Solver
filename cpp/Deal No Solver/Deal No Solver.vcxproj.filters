@@ -29,5 +29,8 @@
     <ClInclude Include="Case.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="BS_thread_pool.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
