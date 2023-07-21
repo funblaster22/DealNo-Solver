@@ -21,30 +21,30 @@ const double CONVERSION_720P = (double)SCALE_HEIGHT / 720;
 VideoCapture cap("C:/Users/Amy/Documents/python/DealNo Solver/IMG_4383.MOV");
 vector<Case> cases;
 // Global scope OK since only used for debugging
-Mat frame;
+Mat debug_frame;
 
 bool tick(bool debug) {
-    bool ret = cap.read(frame);
+    bool ret = cap.read(debug_frame);
     if (!ret) return false;
 
-    Mat erosion;
-    cvtColor(frame, erosion, COLOR_BGR2GRAY);
-    threshold(erosion, erosion, 100, 255, THRESH_BINARY);
+    Mat bin_frame;
+    cvtColor(debug_frame, bin_frame, COLOR_BGR2GRAY);
+    threshold(bin_frame, bin_frame, 100, 255, THRESH_BINARY);
     // cv2.imshow("bin", binary)  # For reference
     int kernel_size = 60;  // 80x80 does not work b / c prev centroid outside case after moving
     // int kernel_size = int(kernel_size_720p * (frame.shape[0] / 720));  // convert kernel size for 720p to current resolution
     Mat kernel = getStructuringElement(MORPH_RECT, Size(kernel_size, kernel_size));
     // Ref: https://docs.opencv.org/master/d9/d61/tutorial_py_morphological_ops.html
-    erode(erosion, erosion, kernel);
+    erode(bin_frame, bin_frame, kernel);
 
     // Scale to remove unnecessary info(assumes 9:16 ratio)
-    resize(erosion, erosion, Size((int)(SCALE_HEIGHT * (16.0 / 9)), SCALE_HEIGHT));
+    resize(bin_frame, bin_frame, Size((int)(SCALE_HEIGHT * (16.0 / 9)), SCALE_HEIGHT));
 
     // TODO
 
     if (debug) {
-        imshow("original", frame);
-        imshow("tracked", erosion);
+        imshow("debug_frame", debug_frame);
+        imshow("bin_frame", bin_frame);
         char key;
         if (cases.size() < 16)
             key = waitKey(1);
