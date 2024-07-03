@@ -1,0 +1,33 @@
+Realtime:<br>
+<video id="realtime" autoplay muted controls></video><br> Delayed:<br>
+<video id="delayed" autoplay muted controls></video>
+
+<script>
+// Adapted from https://stackoverflow.com/a/75916473
+(async () => {
+  const mimeType = `video/webm; codecs="vp8"`;
+
+  // Use webcam stream instead of canvas animation
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+
+  document.getElementById("realtime").srcObject = stream;
+  const mediaSource = new MediaSource();
+  const delayed = document.getElementById("delayed");
+  delayed.src = URL.createObjectURL(mediaSource);
+  await new Promise((res) =>
+    mediaSource.addEventListener("sourceopen", res, { once: true })
+  );
+  const sourceBuffer = mediaSource.addSourceBuffer(mimeType);
+  const recorder = new MediaRecorder(stream, { mimeType });
+  recorder.ondataavailable = async ({ data }) => {
+    if (mediaSource.readyState !== "open" || !data.size) {
+      return;
+    }
+    sourceBuffer.appendBuffer(await data.arrayBuffer());
+  };
+  delayed.pause();
+  recorder.start(50);
+delayed.playbackRate = 0.5;
+delayed.play();
+})();
+</script>
