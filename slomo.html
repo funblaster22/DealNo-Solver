@@ -1,16 +1,35 @@
-Realtime:<br>
-<video id="realtime" autoplay muted controls></video><br> Delayed:<br>
-<video id="delayed" autoplay muted controls></video>
+<style>
+  body, html {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  video {
+    width: 100dvw;
+    height: 100dvh;
+    object-fit: contain;
+  }
+</style>
+
+<video id="delayed" autoplay muted></video>
 
 <script>
+let isSloMo = false;
+
 // Adapted from https://stackoverflow.com/a/75916473
 (async () => {
   const mimeType = `video/webm; codecs="vp8"`;
 
   // Use webcam stream instead of canvas animation
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+  const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        // facingMode: "back",
+        // frameRate: { ideal: 60 }
+      }
+  });
 
-  document.getElementById("realtime").srcObject = stream;
   const mediaSource = new MediaSource();
   const delayed = document.getElementById("delayed");
   delayed.src = URL.createObjectURL(mediaSource);
@@ -27,7 +46,13 @@ Realtime:<br>
   };
   delayed.pause();
   recorder.start(50);
-delayed.playbackRate = 0.5;
-delayed.play();
+  delayed.play();
+
+  window.addEventListener("click", () => {
+    isSloMo = !isSloMo;
+    delayed.playbackRate = isSloMo ? 0.5 : 1;
+    if (!isSloMo)
+      delayed.currentTime = delayed.buffered.end(delayed.buffered.length - 1);
+  });
 })();
 </script>
