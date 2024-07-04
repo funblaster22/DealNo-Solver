@@ -1,0 +1,19 @@
+[project]
+name = "DealNo-Solver"
+version = "0.1.0"
+description = "Default template for PDM package"
+authors = [
+    {name = "Ethan Dawes", email = "ethand.python@gmail.com"},
+]
+dependencies = [
+    "imutils",
+    "opencv-contrib-python",
+    "lib @ git+https://github.com/funblaster22/python-lib.git",
+]
+requires-python = "==3.12.*"
+readme = "README.md"
+license = {text = "MIT"}
+
+
+[tool.pdm]
+distribution = false

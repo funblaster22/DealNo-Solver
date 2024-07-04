@@ -2,3 +2,4 @@
 *.mp4
 *.mov
 *.avi
+.pdm-python
