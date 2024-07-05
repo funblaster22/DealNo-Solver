@@ -1,4 +1,4 @@
-from cv2 import cv2
+import cv2
 from time import time
 import numpy as np
 from scipy import stats
