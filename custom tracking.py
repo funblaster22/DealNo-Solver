@@ -126,6 +126,7 @@ def _getBox(bin_frame: np.ndarray, centroid: Box):
 
 
 def preprocess_frame(frame: np.ndarray):
+    """Convert to binary, erode to make separation clearer, and scale down to `SCALE_HEIGHT` pixels tall"""
     grey = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     _, binary = cv2.threshold(grey, 100, 255, cv2.THRESH_BINARY)
     # cv2.imshow("bin", binary)  # For reference
@@ -140,6 +141,7 @@ def preprocess_frame(frame: np.ndarray):
 
 
 def iter_cap(vid_src: str):
+    """Iterate through every other frame of a video"""
     cap = cv2.VideoCapture(vid_src)
     cap.set(cv2.CAP_PROP_POS_FRAMES, 900)
     while True:
@@ -154,6 +156,7 @@ def iter_cap(vid_src: str):
 
 def preprocess(vid_src: str):
     """Asynchronously iterate through frames and apply `preprocess_frame`
+    Rationale: Since pre-processing does not depend on prior frames, it is a prime candidate for parallelization
     :returns: array with applied transformations
     """
     # Unfortunately, multiprocessing is slower (Tested multiprocessing.Pool.map & ProcessPoolExecutor w/ different chunksize/process)
@@ -264,7 +267,7 @@ def main(debug: bool):
 
     print("Start!")
     start = time()
-    vid_src = r"C:\Users\Amy\Documents\python\DealNo Solver\IMG_4383.MOV"
+    vid_src = "IMG_4383.MOV"
     bin_frames = preprocess(vid_src)
     preprocess_end = time()
     print("Preprocessed in:", round(preprocess_end - start, 2), "seconds")
@@ -279,6 +282,5 @@ def main(debug: bool):
 cases: list[Case] = []
 debug_frame: np.ndarray = None  # Global scope OK since only used for debugging
 if __name__ == "__main__":
-    debug = False
-    main(debug)
+    debug = True  # Show preview or not
     main(debug)

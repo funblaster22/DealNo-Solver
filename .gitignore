@@ -3,3 +3,5 @@
 *.mov
 *.avi
 .pdm-python
+!IMG_4383.MOV
+!docs/*
