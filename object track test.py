@@ -22,19 +22,19 @@ args = vars(ap.parse_args())
 # function to create our object tracker
 if int(major) == 3 and int(minor) < 3:
 	tracker = cv2.Tracker_create(args["tracker"].upper())
-# otherwise, for OpenCV 3.3 OR NEWER, we need to explicity call the
-# approrpiate object tracker constructor:
+# otherwise, for OpenCV 3.3 OR NEWER, we need to explicitly call the
+# appropriate object tracker constructor:
 else:
 	# initialize a dictionary that maps strings to their corresponding
 	# OpenCV object tracker implementations
 	OPENCV_OBJECT_TRACKERS = {
-		"csrt": cv2.TrackerCSRT_create,  # This one works the best, but doesn't work when they swap & overlap
-		"kcf": cv2.TrackerKCF_create,
-		"boosting": cv2.legacy.TrackerBoosting_create,
-		"mil": cv2.TrackerMIL_create,
-		"tld": cv2.legacy.TrackerTLD_create,
-		"medianflow": cv2.legacy.TrackerMedianFlow_create,
-		"mosse": cv2.legacy.TrackerMOSSE_create
+		"csrt": cv2.TrackerCSRT.create(),  # This one works the best, but doesn't work when they swap & overlap
+		"kcf": cv2.TrackerKCF.create(),
+		"boosting": cv2.legacy.TrackerBoosting.create(),
+		"mil": cv2.TrackerMIL.create(),
+		"tld": cv2.legacy.TrackerTLD.create(),
+		"medianflow": cv2.legacy.TrackerMedianFlow.create(),
+		"mosse": cv2.legacy.TrackerMOSSE.create()
 	}
 	# grab the appropriate object tracker using our dictionary of
 	# OpenCV object tracker objects
