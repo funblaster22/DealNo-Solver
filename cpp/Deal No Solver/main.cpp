@@ -82,7 +82,7 @@ int main() {
     cases.clear();
     cout << "Start!" << endl;
     auto start = high_resolution_clock::now();
-    auto vid_src = "C:/Users/Amy/Documents/python/DealNo Solver/IMG_4383.MOV";
+    auto vid_src = "../../IMG_4383.MOV";
     auto bin_frames = preprocess(vid_src);
     auto preprocess_end = high_resolution_clock::now();
     cout << "Preprocessed in " << duration_cast<seconds>(preprocess_end - start).count() << " seconds";
