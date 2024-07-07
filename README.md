@@ -6,8 +6,9 @@ However, the shuffling is fast and nearly impossible for humans to track unaided
 ## Automatic Mode
 Automatically track cases using openCV and momentum to detect swapping.
 
-| [Before](IMG_4383.MOV) | [After](docs/result.mp4) |
-|------------------------|--------------------------|
+| Input | Result |
+|---|---|
+| ![Cases shuffling](docs/input.gif) | ![Cases shuffling black & white with trackers](docs/result.gif) |
 
 **Usage:** Install dependancies with pypackage compatable package manager, then run `custom tracking.py`
 
