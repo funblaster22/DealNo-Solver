@@ -50,7 +50,8 @@ let isSloMo = false;
 
   window.addEventListener("click", () => {
     isSloMo = !isSloMo;
-    delayed.playbackRate = isSloMo ? 0.5 : 1;
+    // at this speed, an 8-second video will take 20 seconds, which is below the limit
+    delayed.playbackRate = isSloMo ? 0.4 : 1;
     if (!isSloMo)
       delayed.currentTime = delayed.buffered.end(delayed.buffered.length - 1);
   });
